@@ -1,0 +1,5 @@
+profiles:
+  default:
+    registry_url: "components.espressif.com"
+    storage_url:
+      - "https://components-file.espressif.cn"

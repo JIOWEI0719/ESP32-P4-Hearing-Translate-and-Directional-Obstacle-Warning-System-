@@ -1,0 +1,53 @@
+menu "Camera Configuration"
+
+    config EXAMPLE_MIPI_CSI_SCCB_I2C_PORT
+        int "MIPI CSI SCCB I2C Port Number"
+        default 0
+        range 0 1
+
+    config EXAMPLE_MIPI_CSI_SCCB_I2C_SCL_PIN
+        int "MIPI CSI SCCB I2C SCL Pin"
+        default 8
+        range -1 56
+
+    config EXAMPLE_MIPI_CSI_SCCB_I2C_SDA_PIN
+        int "MIPI CSI SCCB I2C SDA Pin"
+        default 7
+        range -1 56
+
+    config EXAMPLE_MIPI_CSI_SCCB_I2C_FREQ
+        int "MIPI CSI SCCB I2C Frequency"
+        default 100000
+        range 100000 400000
+
+    config EXAMPLE_MIPI_CSI_CAM_SENSOR_RESET_PIN
+        int "MIPI CSI Camera Sensor Reset Pin"
+        default -1
+        range -1 56
+
+    config EXAMPLE_MIPI_CSI_CAM_SENSOR_PWDN_PIN
+        int "MIPI CSI Camera Sensor Power Down Pin"
+        default -1
+        range -1 56
+
+    config EXAMPLE_H264_I_PERIOD
+        int "H.264 Intra Frame period"
+        default 30
+        range 1 120
+
+    config EXAMPLE_H264_BITRATE
+        int "H.264 Bitrate"
+        default 1000000
+        range 25000 2500000
+
+    config EXAMPLE_H264_MIN_QP
+        int "H.264 Minimum Quality"
+        default 25
+        range 1 51
+
+    config EXAMPLE_H264_MAX_QP
+        int "H.264 Maximum Quality"
+        default 26
+        range 1 51
+
+endmenu

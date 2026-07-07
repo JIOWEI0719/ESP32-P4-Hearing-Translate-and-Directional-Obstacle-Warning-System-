@@ -1,0 +1,31 @@
+{
+  "idf.currentSetup": "D:/Espressif/frameworks/esp-idf-v5.5.4/",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32p4"
+  },
+  "clangd.path": "D:\\Espressif\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=d:\\espProject\\lvgl_demo_v9\\build"
+  ],
+  "idf.openOcdConfigs": [
+    "board/esp32p4-builtin.cfg"
+  ],
+  "idf.portWin": "COM4",
+  "idf.flashType": "UART",
+  "terminal.integrated.env.windows": {
+    "HTTP_PROXY": "",
+    "HTTPS_PROXY": "",
+    "http_proxy": "",
+    "https_proxy": "",
+    "NO_PROXY": "localhost,127.0.0.1,.local"
+  },
+  "idf.customTerminalEnv": {
+    "HTTP_PROXY": "",
+    "HTTPS_PROXY": "",
+    "http_proxy": "",
+    "https_proxy": "",
+    "NO_PROXY": "localhost,127.0.0.1,.local"
+  }
+}
