@@ -13,7 +13,7 @@ static const char *TAG = "music_player";
 
 /* BSP OUT-only codec handle.  Independent of audio_sr — ESP-SR cannot touch this. */
 static esp_codec_dev_handle_t s_play_handle = NULL;
-static int s_volume = 60;
+static int s_volume = 100;
 
 /* ====== Audio player hardware callbacks ====== */
 
