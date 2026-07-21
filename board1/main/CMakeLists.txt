@@ -27,7 +27,7 @@ idf_component_register(SRCS
 set(cmake_dir "${CMAKE_CURRENT_LIST_DIR}/../managed_components/espressif__esp-dl/fbs_loader/cmake")
 include("${cmake_dir}/utilities.cmake")
 target_add_aligned_binary_data(${COMPONENT_LIB}
-    "gesture_cnn_96_gray_esp32p4.espdl"
+    "gesture_cnn_224_gray_esp32p4.espdl"
     BINARY
     16)
 

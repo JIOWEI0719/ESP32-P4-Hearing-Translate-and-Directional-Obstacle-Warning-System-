@@ -15,6 +15,7 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -30,7 +31,7 @@
 #define EXAMPLE_MDNS_HOST_NAME "esp32p4-rtsp"
 #define ENABLE_GESTURE_INFERENCE 1
 #define ENABLE_RTSP_PREVIEW 0
-#define INFERENCE_INTERVAL_MS 200
+#define INFERENCE_INTERVAL_MS 125
 #define INFERENCE_TASK_STACK_SIZE (12 * 1024)
 #define INFERENCE_TASK_PRIORITY 2
 #define INFERENCE_IDLE_DELAY_MS 10
@@ -42,19 +43,21 @@
 
 static const char *TAG = "CAM_GESTURE";
 
-static constexpr int GESTURE_INPUT_WIDTH = 96;
-static constexpr int GESTURE_INPUT_HEIGHT = 96;
+static constexpr int GESTURE_INPUT_WIDTH = 224;
+static constexpr int GESTURE_INPUT_HEIGHT = 224;
 static constexpr size_t GESTURE_INPUT_FRAME_SIZE =
     (size_t)GESTURE_INPUT_WIDTH * (size_t)GESTURE_INPUT_HEIGHT;
 static constexpr int GESTURE_LABEL_COUNT = 7;
 static constexpr int GESTURE_MODEL_INPUT_EXPONENT = -7;
-static constexpr int GESTURE_MODEL_OUTPUT_EXPONENT = -5;
+static constexpr int GESTURE_MODEL_OUTPUT_EXPONENT = -4;
 static constexpr uart_port_t GESTURE_UART_NUM = UART_NUM_1;
 static constexpr gpio_num_t GESTURE_UART_TX_GPIO = GPIO_NUM_36;
 static constexpr int GESTURE_UART_BAUD_RATE = 115200;
 static constexpr int GESTURE_UART_RX_BUFFER_SIZE = 256;
 static constexpr float GESTURE_DEFAULT_CONFIDENCE_THRESHOLD = 0.90f;
-static constexpr float GESTURE_RELAXED_CONFIDENCE_THRESHOLD = 0.40f;
+static constexpr float GESTURE_A_LITTLE_CONFIDENCE_THRESHOLD = 0.65f;
+static constexpr float GESTURE_YOU_CONFIDENCE_THRESHOLD = 0.55f;
+static constexpr float GESTURE_GOOD_CONFIDENCE_THRESHOLD = 0.92f;
 static constexpr float GESTURE_MID_CONFIDENCE_THRESHOLD = 0.85f;
 static constexpr uint8_t GESTURE_UART_FRAME_HEAD_0 = 0xAA;
 static constexpr uint8_t GESTURE_UART_FRAME_HEAD_1 = 0x55;
@@ -83,8 +86,8 @@ enum gesture_id_t {
     GESTURE_ID_YOU = 6,
 };
 
-extern const uint8_t gesture_cnn_96_gray_esp32p4_espdl_start[] asm("_binary_gesture_cnn_96_gray_esp32p4_espdl_start");
-extern const uint8_t gesture_cnn_96_gray_esp32p4_espdl_end[] asm("_binary_gesture_cnn_96_gray_esp32p4_espdl_end");
+extern const uint8_t gesture_cnn_224_gray_esp32p4_espdl_start[] asm("_binary_gesture_cnn_224_gray_esp32p4_espdl_start");
+extern const uint8_t gesture_cnn_224_gray_esp32p4_espdl_end[] asm("_binary_gesture_cnn_224_gray_esp32p4_espdl_end");
 
 static camera_capture_t g_camera_capture;
 #if ENABLE_RTSP_PREVIEW
@@ -98,10 +101,31 @@ static SemaphoreHandle_t g_debug_image_mutex;
 static volatile bool g_inference_pending;
 static int64_t g_last_capture_us;
 
-static float g_latest_features[GESTURE_INPUT_FRAME_SIZE];
-static float g_base_features[GESTURE_INPUT_FRAME_SIZE];
-static float g_inference_features[GESTURE_INPUT_FRAME_SIZE];
+static float *g_latest_features;
+static float *g_base_features;
+static float *g_inference_features;
 static uint8_t g_gesture_uart_seq;
+
+static bool allocate_feature_buffers()
+{
+    const size_t bytes = GESTURE_INPUT_FRAME_SIZE * sizeof(float);
+    const uint32_t caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+
+    g_latest_features = (float *)heap_caps_malloc(bytes, caps);
+    g_base_features = (float *)heap_caps_malloc(bytes, caps);
+    g_inference_features = (float *)heap_caps_malloc(bytes, caps);
+    if (!g_latest_features || !g_base_features || !g_inference_features) {
+        ESP_LOGE(TAG,
+                 "failed to allocate 224x224 feature buffers in PSRAM (%u bytes each)",
+                 (unsigned)bytes);
+        return false;
+    }
+
+    ESP_LOGI(TAG,
+             "allocated three 224x224 feature buffers in PSRAM (%u bytes total)",
+             (unsigned)(bytes * 3));
+    return true;
+}
 
 #if DEBUG_MODEL_INPUT_HTTP
 static uint8_t g_latest_model_input_u8[GESTURE_INPUT_FRAME_SIZE];
@@ -855,14 +879,6 @@ static void camera_raw_frame_cb(const uint8_t *buf,
         raw_frame_info_logged = true;
     }
 
-    const int packed_stride = (width * 3) / 2;
-    const size_t packed_len = (size_t)packed_stride * (size_t)height;
-    if (len < packed_len) {
-        ESP_LOGW(TAG, "raw frame too short: len=%u expected at least %u for O_UYY_E_VYY",
-                 (unsigned)len, (unsigned)packed_len);
-        return;
-    }
-
     int64_t now_us = esp_timer_get_time();
     if ((now_us - g_last_capture_us) < (INFERENCE_INTERVAL_MS * 1000LL)) {
         return;
@@ -879,6 +895,17 @@ static void camera_raw_frame_cb(const uint8_t *buf,
 #if DEBUG_MODEL_INPUT_HTTP
     update_debug_layout_images(buf, len);
 #endif
+
+    // The ESP32-P4 video pipeline exposes YUV420 using the packed
+    // O_UYY_E_VYY layout in both RTSP and standalone capture modes.
+    const int packed_stride = (width * 3) / 2;
+    const size_t packed_len = (size_t)packed_stride * (size_t)height;
+    if (len < packed_len) {
+        ESP_LOGW(TAG, "raw frame too short: len=%u expected at least %u for O_UYY_E_VYY",
+                 (unsigned)len, (unsigned)packed_len);
+        xSemaphoreGive(g_features_mutex);
+        return;
+    }
     resize_center_crop_o_uyy_e_vyy_to_features(buf,
                                                width,
                                                height,
@@ -982,11 +1009,16 @@ static void gesture_uart_init()
 
 static float gesture_confidence_threshold_for_id(int gesture_id)
 {
-    if (gesture_id == GESTURE_ID_A_LITTLE || gesture_id == GESTURE_ID_YOU) {
-        return GESTURE_RELAXED_CONFIDENCE_THRESHOLD;
+    if (gesture_id == GESTURE_ID_A_LITTLE) {
+        return GESTURE_A_LITTLE_CONFIDENCE_THRESHOLD;
     }
-    if (gesture_id == GESTURE_ID_GOOD ||
-        gesture_id == GESTURE_ID_HELP ||
+    if (gesture_id == GESTURE_ID_YOU) {
+        return GESTURE_YOU_CONFIDENCE_THRESHOLD;
+    }
+    if (gesture_id == GESTURE_ID_GOOD) {
+        return GESTURE_GOOD_CONFIDENCE_THRESHOLD;
+    }
+    if (gesture_id == GESTURE_ID_HELP ||
         gesture_id == GESTURE_ID_SIGN_LANGUAGE) {
         return GESTURE_MID_CONFIDENCE_THRESHOLD;
     }
@@ -1140,7 +1172,6 @@ static int print_gesture_scores(const float *scores, int count)
             top_value = scores[i];
             top_index = i;
         }
-
         printf("  %s: %.4f\r\n", GESTURE_LABELS[i], scores[i]);
     }
 
@@ -1181,9 +1212,9 @@ static void inference_task(void *arg)
 
     ESP_LOGI(TAG,
              "loading ESP-DL model from rodata, size=%u bytes",
-             (unsigned)(gesture_cnn_96_gray_esp32p4_espdl_end -
-                        gesture_cnn_96_gray_esp32p4_espdl_start));
-    dl::Model model((const char *)gesture_cnn_96_gray_esp32p4_espdl_start,
+             (unsigned)(gesture_cnn_224_gray_esp32p4_espdl_end -
+                        gesture_cnn_224_gray_esp32p4_espdl_start));
+    dl::Model model((const char *)gesture_cnn_224_gray_esp32p4_espdl_start,
                     fbs::MODEL_LOCATION_IN_FLASH_RODATA);
     log_model_tensor_info(&model);
 
@@ -1201,7 +1232,9 @@ static void inference_task(void *arg)
         }
 
         if (xSemaphoreTake(g_features_mutex, portMAX_DELAY) == pdTRUE) {
-            memcpy(g_base_features, g_latest_features, sizeof(g_base_features));
+            memcpy(g_base_features,
+                   g_latest_features,
+                   GESTURE_INPUT_FRAME_SIZE * sizeof(float));
             g_inference_pending = false;
             xSemaphoreGive(g_features_mutex);
         }
@@ -1254,6 +1287,9 @@ extern "C" int app_main()
            GESTURE_LABEL_COUNT);
 
 #if ENABLE_GESTURE_INFERENCE
+    if (!allocate_feature_buffers()) {
+        return 1;
+    }
     g_features_mutex = xSemaphoreCreateMutex();
     g_frame_ready_sem = xSemaphoreCreateBinary();
 #if DEBUG_MODEL_INPUT_HTTP
@@ -1304,7 +1340,7 @@ extern "C" int app_main()
     printf("Preview with VLC/ffplay: rtsp://esp32p4-rtsp.local:%d\r\n", RTSP_SERVER_PORT);
     printf("Browser via webrtc-streamer: http://127.0.0.1:8000/webrtcstreamer.html?video=rtsp://esp32p4-rtsp.local:%d\r\n",
            RTSP_SERVER_PORT);
-    printf("Dataset capture example: ffmpeg -i rtsp://<board-ip>:%d -vf fps=1 /path/to/dataset/frame_%%05d.jpg\r\n",
+    printf("Dataset capture example: ffmpeg -i rtsp://192.168.137.2:%d -vf fps=1 D:\\camera_dataset\\raw\\frame_%%05d.jpg\r\n",
            RTSP_SERVER_PORT);
 #else
     ESP_LOGI(TAG, "initialize standalone camera capture");

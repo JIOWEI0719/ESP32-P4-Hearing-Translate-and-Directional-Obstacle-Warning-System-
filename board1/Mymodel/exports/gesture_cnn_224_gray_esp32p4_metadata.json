@@ -1,0 +1,103 @@
+{
+  "target": "esp32p4",
+  "num_of_bits": 8,
+  "input_shape": [
+    1,
+    1,
+    224,
+    224
+  ],
+  "classes": [
+    "a_little",
+    "good",
+    "help",
+    "me",
+    "name",
+    "sign_language",
+    "you"
+  ],
+  "class_to_idx": {
+    "a_little": 0,
+    "good": 1,
+    "help": 2,
+    "me": 3,
+    "name": 4,
+    "sign_language": 5,
+    "you": 6
+  },
+  "preprocess": {
+    "color": "grayscale",
+    "resize": [
+      224,
+      224
+    ],
+    "normalization": "x = (pixel / 255.0 - 0.5) / 0.5"
+  },
+  "espdl_model": "D:\\esp32p4\\example-standalone-inferencing-espressif-esp32-main\\Mymodel\\exports\\gesture_cnn_224_gray_esp32p4.espdl",
+  "quantized_eval_acc": 0.8363636363636363,
+  "confusion_matrix": [
+    [
+      7,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      7,
+      0,
+      0,
+      0,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      8,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      7,
+      0,
+      0,
+      1
+    ],
+    [
+      1,
+      0,
+      0,
+      0,
+      6,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      1,
+      0,
+      0,
+      3,
+      1
+    ],
+    [
+      0,
+      0,
+      0,
+      2,
+      0,
+      0,
+      8
+    ]
+  ]
+}

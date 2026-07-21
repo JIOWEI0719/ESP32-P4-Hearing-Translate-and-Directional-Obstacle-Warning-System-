@@ -4,8 +4,8 @@ setlocal
 REM Go to the directory where this script is located
 cd /d "%~dp0"
 
-REM Your ESP-IDF path (change this to match your installation)
-set IDF_PATH=C:\path\to\esp-idf
+REM Your ESP-IDF path
+set IDF_PATH=D:\esp\v5.5.4\esp-idf
 
 if not exist "%IDF_PATH%\export.bat" (
     echo [ERROR] Cannot find ESP-IDF export.bat:
@@ -27,8 +27,17 @@ where cmake
 
 echo [INFO] Building project...
 
-REM Change esp32s3 to esp32 if you are using normal ESP32
-idf.py set-target esp32p4
+REM Set the target only for a fresh project. Running set-target every time
+REM triggers fullclean and recreates sdkconfig, losing menuconfig selections.
+if not exist "sdkconfig" (
+    echo [INFO] No sdkconfig found, setting target to esp32p4...
+    idf.py set-target esp32p4
+    if errorlevel 1 (
+        echo [ERROR] Failed to set target.
+        exit /b 1
+    )
+)
+
 idf.py build
 
 if errorlevel 1 (

@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define CAMERA_CAPTURE_WIDTH 800
-#define CAMERA_CAPTURE_HEIGHT 640
+#define CAMERA_CAPTURE_HEIGHT 800
 #define CAMERA_CAPTURE_BUFFER_COUNT 2
 
 typedef struct {

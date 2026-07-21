@@ -124,12 +124,12 @@ def parse_args():
     )
     parser.add_argument(
         "--url",
-        default="rtsp://<board-ip>:8554",
+        default="rtsp://192.168.137.2:8554",
         help="RTSP stream URL.",
     )
     parser.add_argument(
         "--output",
-        default="./gesture_dataset",
+        default="D:/gesture_dataset_fisheye_224",
         help="Dataset output directory.",
     )
     parser.add_argument(
@@ -141,7 +141,7 @@ def parse_args():
     parser.add_argument(
         "--size",
         type=int,
-        default=96,
+        default=224,
         help="Saved image size when center-crop mode is used.",
     )
     parser.add_argument(
